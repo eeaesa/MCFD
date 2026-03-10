@@ -13,7 +13,7 @@ Official respository for MCFD.
 2. Use the WSI processing tool provided by [CLAM](https://github.com/mahmoodlab/CLAM) to extract resnet-50 pretrained 1024-dim feature for each 256 $\times$ 256 patch (20x), which we then save as `.h5` files for each WSI.
 
 #### Genomics
-In this work, we directly use the preprocessed genomic data provided by [MCAT](https://github.com/mahmoodlab/MCAT), downloading the dataset_csv and datasets_csv_sig folders.
+In this work, we directly use the preprocessed genomic data provided by [MCAT](https://github.com/mahmoodlab/MCAT), downloading the `dataset_csv` and `datasets_csv_sig` folders.
 
 ## Training-Validation Splits
 Splits for each cancer type are found in the `splits/5foldcv ` folder, which are randomly partitioned each dataset using 5-fold cross-validation. Each one contains splits_{k}.csv for k = 1 to 5. 
