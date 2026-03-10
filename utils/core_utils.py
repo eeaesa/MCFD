@@ -249,6 +249,8 @@ def _train_val(datasets: tuple, cur: int, args: Namespace):
 
     # ---> resume training
     start_epoch = 0
+    best_val_cindex = -1.0
+
     if os.path.isfile(resume_ckpt_path):
         print(f"\n==> Resume training from {resume_ckpt_path}")
         checkpoint = torch.load(resume_ckpt_path, map_location="cpu")
@@ -260,7 +262,8 @@ def _train_val(datasets: tuple, cur: int, args: Namespace):
             early_stopping.load_state_dict(checkpoint["early_stopping"])
 
         start_epoch = checkpoint["epoch"] + 1
-        print(f"==> Resumed at epoch {start_epoch}")
+        best_val_cindex = checkpoint.get("best_val_cindex", -1.0)
+        print(f"==> Resumed at epoch {start_epoch}, current best Val C-Index: {best_val_cindex:.4f}")
 
     # ---> do train val
     for epoch in range(start_epoch, args.max_epochs):
@@ -275,31 +278,44 @@ def _train_val(datasets: tuple, cur: int, args: Namespace):
             loss_fn=loss_fn, reg_fn=reg_fn,
         )
 
+        if (epoch + 1) % 5 == 0:
+            results_val_dict, val_cindex = safe_validation(model, val_loader, f"Epoch {epoch + 1} Validation")
+
+            if val_cindex > best_val_cindex:
+                print(
+                    f"*** Val c-Index improved from {best_val_cindex:.4f} to {val_cindex:.4f}. Saving best model... ***")
+                best_val_cindex = val_cindex
+                torch.save(model.state_dict(), final_ckpt_path)
+            else:
+                print(f"Val c-Index ({val_cindex:.4f}) did not improve from {best_val_cindex:.4f}.")
+
         # ---> save resume checkpoint
         torch.save(
             {
                 "epoch": epoch,
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "early_stopping": early_stopping.state_dict() if early_stopping else None
+                "early_stopping": early_stopping.state_dict() if early_stopping else None,
+                "best_val_cindex": best_val_cindex
             },
             resume_ckpt_path
         )
 
-    # ---> save model
-    print(f"\nSaving final model for Fold {cur}...")
-    torch.save(model.state_dict(),
-               os.path.join(args.results_dir, f"s_{cur}_checkpoint.pt"))
+    print(f"\nTraining completed for Fold {cur}.")
 
-    model.load_state_dict(
-        torch.load(os.path.join(args.results_dir, f"s_{cur}_checkpoint.pt"))
-    )
+    if os.path.isfile(final_ckpt_path):
+        print(f"Loading best model for Final Validation...")
+        model.load_state_dict(torch.load(final_ckpt_path, map_location=device))
+    else:
+        print(f"No best model found (perhaps training epochs < 5). Saving and using final state...")
+        torch.save(model.state_dict(), final_ckpt_path)
 
-    # ---> do test
-    results_val_dict, val_cindex = safe_validation(model, val_loader, "Final Validation")
+    # ---> do final test / validation on the best weights
+    results_val_dict, val_cindex = safe_validation(model, val_loader, "Final Best Model Validation")
 
-    print('Val c-Index: {:.4f}'.format(val_cindex))
-    writer.close()
+    print('Final Val c-Index: {:.4f}'.format(val_cindex))
+    if writer:
+        writer.close()
 
     return results_val_dict, val_cindex
 
